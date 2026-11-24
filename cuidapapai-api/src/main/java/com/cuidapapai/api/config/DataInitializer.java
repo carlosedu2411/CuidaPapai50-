@@ -24,16 +24,18 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        String userId = "usr_987654";
+
         if (userRepository.count() == 0) {
             log.info("Inicializando dados de teste da aplicação CuidaPapai...");
-
-            String userId = "usr_987654";
 
             // 1. Perfil do Usuário
             User user = User.builder()
                     .id(userId)
                     .name("Maria da Silva")
                     .shortName("Dona Maria")
+                    .email("maria@cuidapapai.com")
+                    .password("123456")
                     .role("elderly")
                     .theme("light")
                     .fontSize("large")
@@ -138,6 +140,16 @@ public class DataInitializer implements CommandLineRunner {
                     .build());
 
             log.info("Dados de teste criados com sucesso!");
+        } else {
+            // Garante que o usuário existente tenha e-mail e senha configurados
+            userRepository.findFirstByOrderByIdAsc().ifPresent(u -> {
+                if (u.getEmail() == null || u.getPassword() == null) {
+                    u.setEmail("maria@cuidapapai.com");
+                    u.setPassword("123456");
+                    userRepository.save(u);
+                    log.info("Credenciais padrão adicionadas à usuária existente.");
+                }
+            });
         }
     }
 }

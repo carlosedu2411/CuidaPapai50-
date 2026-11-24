@@ -27,6 +27,12 @@ public class User {
     @Column(name = "short_name", nullable = false, length = 80)
     private String shortName;
 
+    @Column(length = 150, unique = true)
+    private String email;
+
+    @Column(length = 255)
+    private String password;
+
     @Column(length = 30)
     @Builder.Default
     private String role = "elderly";
