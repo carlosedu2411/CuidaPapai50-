@@ -9,6 +9,7 @@ import java.util.List;
 
 @Repository
 public interface CareTaskRepository extends JpaRepository<CareTask, String> {
-    List<CareTask> findByTaskDateOrderByIdAsc(LocalDate taskDate);
     List<CareTask> findByUserIdAndTaskDateOrderByIdAsc(String userId, LocalDate taskDate);
+    List<CareTask> findByUserIdOrderByIdAsc(String userId);
+    List<CareTask> findByTaskDateOrderByIdAsc(LocalDate taskDate);
 }

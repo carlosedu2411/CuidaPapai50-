@@ -1,5 +1,6 @@
 package com.cuidapapai.api.service;
 
+import com.cuidapapai.api.dto.CreateMedicationRequest;
 import com.cuidapapai.api.dto.MedicationResponse;
 import com.cuidapapai.api.dto.TakeMedicationRequest;
 import com.cuidapapai.api.dto.TakeMedicationResponse;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -20,18 +22,47 @@ public class MedicationService {
 
     private final MedicationRepository medicationRepository;
 
-    public List<MedicationResponse> getTodayMedications() {
+    public List<MedicationResponse> getTodayMedications(String userId) {
         LocalDate today = LocalDate.now();
-        List<Medication> medications = medicationRepository.findByScheduledDateOrderByScheduledTimeAsc(today);
-
-        if (medications.isEmpty()) {
-            // Fallback caso não haja remédios para o dia exato
-            medications = medicationRepository.findAll();
-        }
+        List<Medication> medications = medicationRepository.findByUserIdAndScheduledDateOrderByScheduledTimeAsc(userId, today);
 
         return medications.stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public MedicationResponse createMedication(String userId, CreateMedicationRequest request) {
+        if (request == null || request.getName() == null || request.getName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O nome do medicamento é obrigatório.");
+        }
+        if (request.getDosage() == null || request.getDosage().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A dosagem é obrigatória.");
+        }
+
+        String time = request.getTime() != null && !request.getTime().isBlank()
+                ? request.getTime()
+                : (request.getScheduledTime() != null && !request.getScheduledTime().isBlank()
+                    ? request.getScheduledTime()
+                    : "09:00");
+
+        LocalDate date = request.getScheduledDate() != null ? request.getScheduledDate() : LocalDate.now();
+        String medId = "med_" + UUID.randomUUID().toString().substring(0, 8);
+
+        Medication medication = Medication.builder()
+                .id(medId)
+                .userId(userId)
+                .name(request.getName().trim())
+                .dosage(request.getDosage().trim())
+                .scheduledTime(time)
+                .instructions(request.getInstructions())
+                .isTaken(false)
+                .takenAt(null)
+                .scheduledDate(date)
+                .build();
+
+        medicationRepository.save(medication);
+
+        return toResponse(medication);
     }
 
     public TakeMedicationResponse markAsTaken(String id, TakeMedicationRequest request) {

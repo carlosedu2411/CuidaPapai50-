@@ -9,6 +9,7 @@ import java.util.List;
 
 @Repository
 public interface MedicationRepository extends JpaRepository<Medication, String> {
-    List<Medication> findByScheduledDateOrderByScheduledTimeAsc(LocalDate scheduledDate);
     List<Medication> findByUserIdAndScheduledDateOrderByScheduledTimeAsc(String userId, LocalDate scheduledDate);
+    List<Medication> findByUserIdOrderByScheduledTimeAsc(String userId);
+    List<Medication> findByScheduledDateOrderByScheduledTimeAsc(LocalDate scheduledDate);
 }

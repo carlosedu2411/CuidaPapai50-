@@ -23,7 +23,7 @@ public class AuthService {
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A senha é obrigatória.");
         }
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+        if (userRepository.findByEmail(request.getEmail().trim()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este e-mail já está cadastrado.");
         }
 
@@ -38,7 +38,7 @@ public class AuthService {
                 .id(userId)
                 .name(request.getName() != null ? request.getName() : "Novo Usuário")
                 .shortName(shortName)
-                .email(request.getEmail())
+                .email(request.getEmail().trim())
                 .password(request.getPassword())
                 .role(request.getRole() != null && !request.getRole().isBlank() ? request.getRole() : "elderly")
                 .theme("light")
@@ -50,7 +50,7 @@ public class AuthService {
         return AuthResponse.builder()
                 .success(true)
                 .message("Usuário cadastrado com sucesso!")
-                .token("token_" + UUID.randomUUID().toString().replace("-", ""))
+                .token("token_" + newUser.getId())
                 .user(toProfileResponse(newUser))
                 .build();
     }
@@ -63,7 +63,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A senha é obrigatória.");
         }
 
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(request.getEmail().trim())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "E-mail ou senha inválidos."));
 
         if (!request.getPassword().equals(user.getPassword())) {
@@ -73,7 +73,7 @@ public class AuthService {
         return AuthResponse.builder()
                 .success(true)
                 .message("Login realizado com sucesso!")
-                .token("token_" + UUID.randomUUID().toString().replace("-", ""))
+                .token("token_" + user.getId())
                 .user(toProfileResponse(user))
                 .build();
     }

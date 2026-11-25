@@ -9,6 +9,8 @@ import java.util.List;
 
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, String> {
+    List<Appointment> findByUserIdAndEventDatetimeBetweenOrderByEventDatetimeAsc(String userId, OffsetDateTime start, OffsetDateTime end);
+    List<Appointment> findByUserIdOrderByEventDatetimeAsc(String userId);
     List<Appointment> findByEventDatetimeBetweenOrderByEventDatetimeAsc(OffsetDateTime start, OffsetDateTime end);
     List<Appointment> findAllByOrderByEventDatetimeAsc();
 }
