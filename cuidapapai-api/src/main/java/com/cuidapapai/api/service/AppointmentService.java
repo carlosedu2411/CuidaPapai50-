@@ -87,6 +87,59 @@ public class AppointmentService {
         return toResponse(appointment);
     }
 
+    public AppointmentResponse updateAppointment(String userId, String id, CreateAppointmentRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Os dados do compromisso são obrigatórios.");
+        }
+
+        Appointment appointment = getUserAppointment(userId, id);
+
+        if (request.getTitle() != null) {
+            if (request.getTitle().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O título do compromisso é obrigatório.");
+            }
+            appointment.setTitle(request.getTitle().trim());
+        }
+
+        if (request.getSubtitle() != null) {
+            appointment.setSubtitle(request.getSubtitle());
+        }
+
+        if (request.getEventDatetime() != null) {
+            appointment.setEventDatetime(request.getEventDatetime());
+        } else if (request.getDate() != null && !request.getDate().isBlank()) {
+            try {
+                appointment.setEventDatetime(OffsetDateTime.parse(request.getDate()));
+            } catch (Exception e) {
+                try {
+                    LocalDate localDate = LocalDate.parse(request.getDate());
+                    appointment.setEventDatetime(localDate.atTime(10, 0).atOffset(ZoneOffset.UTC));
+                } catch (Exception ex) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A data do compromisso é inválida.");
+                }
+            }
+        }
+
+        if (request.getColorHex() != null && !request.getColorHex().isBlank()) {
+            appointment.setColorHex(request.getColorHex());
+        }
+
+        return toResponse(appointmentRepository.save(appointment));
+    }
+
+    public void deleteAppointment(String userId, String id) {
+        appointmentRepository.delete(getUserAppointment(userId, id));
+    }
+
+    private Appointment getUserAppointment(String userId, String id) {
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Compromisso não encontrado com id: " + id));
+        if (!userId.equals(appointment.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Compromisso não encontrado com id: " + id);
+        }
+        return appointment;
+    }
+
     private AppointmentResponse toResponse(Appointment apt) {
         OffsetDateTime dt = apt.getEventDatetime();
         String dayShort = getDayOfWeekShort(dt.getDayOfWeek());

@@ -39,4 +39,24 @@ public class AppointmentController {
         AppointmentResponse created = appointmentService.createAppointment(userId, body);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<AppointmentResponse> updateAppointment(
+            HttpServletRequest request,
+            @PathVariable String id,
+            @RequestBody CreateAppointmentRequest body
+    ) {
+        String userId = userResolver.resolveUserId(request);
+        return ResponseEntity.ok(appointmentService.updateAppointment(userId, id, body));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteAppointment(
+            HttpServletRequest request,
+            @PathVariable String id
+    ) {
+        String userId = userResolver.resolveUserId(request);
+        appointmentService.deleteAppointment(userId, id);
+        return ResponseEntity.noContent().build();
+    }
 }
