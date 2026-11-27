@@ -6,18 +6,18 @@ import com.cuidapapai.api.model.PasswordRecoveryCode;
 import com.cuidapapai.api.model.User;
 import com.cuidapapai.api.repository.PasswordRecoveryCodeRepository;
 import com.cuidapapai.api.repository.UserRepository;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -25,6 +25,8 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -32,12 +34,19 @@ public class PasswordRecoveryService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final Logger LOGGER = Logger.getLogger(PasswordRecoveryService.class.getName());
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10))
+            .build();
+    private static final URI SENDGRID_MAIL_URI = URI.create("https://api.sendgrid.com/v3/mail/send");
 
     private final UserRepository userRepository;
     private final PasswordRecoveryCodeRepository recoveryCodeRepository;
-    private final JavaMailSender mailSender;
 
-    @Value("${SMTP_FROM:${spring.mail.username}}")
+    @Value("${sendgrid.api-key}")
+    private String sendGridApiKey;
+
+    @Value("${sendgrid.from}")
     private String fromAddress;
 
     public void sendRecoveryCode(PasswordRecoveryRequest request) {
@@ -46,10 +55,11 @@ public class PasswordRecoveryService {
         if (user == null) {
             return;
         }
-        if (fromAddress == null || fromAddress.isBlank()) {
+        if (sendGridApiKey == null || sendGridApiKey.isBlank()
+                || fromAddress == null || fromAddress.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "Configure SMTP_FROM ou SMTP_USERNAME para enviar e-mails."
+                    "Configure SENDGRID_API_KEY e SENDGRID_FROM para enviar e-mails."
             );
         }
 
@@ -67,21 +77,75 @@ public class PasswordRecoveryService {
         String htmlContent = buildRecoveryEmailHtml(code);
 
         try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(fromAddress);
-            helper.setTo(email);
-            helper.setSubject("Código para recuperar sua senha - CuidaPapai");
-            helper.setText(plainText, htmlContent);
-            mailSender.send(mimeMessage);
-        } catch (MailException | MessagingException exception) {
+            HttpRequest httpRequest = HttpRequest.newBuilder(SENDGRID_MAIL_URI)
+                    .timeout(java.time.Duration.ofSeconds(20))
+                    .header("Authorization", "Bearer " + sendGridApiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            buildSendGridPayload(email, plainText, htmlContent),
+                            StandardCharsets.UTF_8
+                    ))
+                    .build();
+            HttpResponse<String> response = HTTP_CLIENT.send(
+                    httpRequest,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+            if (response.statusCode() != 202) {
+                recoveryCodeRepository.deleteById(email);
+                LOGGER.warning("SendGrid Mail Send API returned HTTP " + response.statusCode());
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "O SendGrid não aceitou o envio do e-mail de recuperação."
+                );
+            }
+        } catch (IOException exception) {
             recoveryCodeRepository.deleteById(email);
+            LOGGER.log(Level.SEVERE, "Could not reach SendGrid Mail Send API.", exception);
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Não foi possível enviar o e-mail de recuperação.",
                     exception
             );
+        } catch (InterruptedException exception) {
+            recoveryCodeRepository.deleteById(email);
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "O envio do e-mail de recuperação foi interrompido.",
+                    exception
+            );
         }
+    }
+
+    private String buildSendGridPayload(String email, String plainText, String htmlContent) {
+        return "{\"personalizations\":[{\"to\":[{\"email\":\"" + escapeJson(email)
+                + "\"}]}],\"from\":{\"email\":\"" + escapeJson(fromAddress)
+                + "\"},\"subject\":\"" + escapeJson("Código para recuperar sua senha - CuidaPapai")
+                + "\",\"content\":[{\"type\":\"text/plain\",\"value\":\"" + escapeJson(plainText)
+                + "\"},{\"type\":\"text/html\",\"value\":\"" + escapeJson(htmlContent) + "\"}]}";
+    }
+
+    private static String escapeJson(String value) {
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (char character : value.toCharArray()) {
+            switch (character) {
+                case '"' -> escaped.append("\\\"");
+                case '\\' -> escaped.append("\\\\");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if (character < 0x20) {
+                        escaped.append(String.format("\\u%04x", (int) character));
+                    } else {
+                        escaped.append(character);
+                    }
+                }
+            }
+        }
+        return escaped.toString();
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
